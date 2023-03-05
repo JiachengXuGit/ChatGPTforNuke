@@ -17,7 +17,7 @@ class ChatGPT(QtWidgets.QWidget):
         super(ChatGPT, self).__init__()
 
         # Set up the OpenAI API client
-        openai.api_key = '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'
+        openai.api_key = 'OPENAI_API_KEY'
         self.conversation = [{"role": "system",
                          "content": "helpful assistant. Will help Nuke(Foundry) related question, python, tcl, Nuke expression, BlinkScript."}]
         # Set window properties
