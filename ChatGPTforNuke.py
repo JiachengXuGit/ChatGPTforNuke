@@ -1,25 +1,26 @@
-#-------------------------------------------------------------------------------
-# ChatGTPforNuke by Jiacheng Xu
+# -------------------------------------------------------------------------------
+# ChatGTPforNuke v1.1 by Jiacheng Xu
 # A chatbot using openai module
 # 2023
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 
 
 from PySide2 import QtWidgets, QtCore, QtGui
 import openai
-import getpass
+import getpass, re, traceback, nuke
 
-# Set up the OpenAI API client
+
 icon_path = "C:/Users/" + getpass.getuser() + "/.nuke/"
 
 class ChatGPT(QtWidgets.QWidget):
     def __init__(self):
         super(ChatGPT, self).__init__()
-
         # Set up the OpenAI API client
+        self.code_blocks = ''
         openai.api_key = 'OPENAI_API_KEY'
         self.conversation = [{"role": "system",
-                         "content": "helpful assistant. Will help Nuke(Foundry) related question, python, tcl, Nuke expression, BlinkScript."}]
+                              "content": "helpful assistant. Will help Nuke(Foundry) related question, python, tcl, Nuke expression, BlinkScript."}]
+
         # Set window properties
         self.setWindowTitle('ChatGPT')
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint)
@@ -28,7 +29,6 @@ class ChatGPT(QtWidgets.QWidget):
 
         # Set background color and font
         self.setStyleSheet("background-color: #323232; sans-serif; font-size: 14px;")
-
 
         # Create message input
         self.message_input = QtWidgets.QTextEdit()
@@ -58,16 +58,22 @@ class ChatGPT(QtWidgets.QWidget):
         clear_button = QtWidgets.QPushButton('Clear')
         clear_button.setFixedHeight(25)
         clear_button.setStyleSheet(f"background: {gradient}; color: #c8c8c8; border: 1px solid #1f1f1f; \
-                                     border-radius: 5px; padding: 1px;")
+                                     border-radius: 5px; padding: 1px; ")
         clear_button.clicked.connect(self.clear_messages)
 
+        # Create run button
+        run_button = QtWidgets.QPushButton('Run Script')
 
-        # Create close button
-        close_button = QtWidgets.QPushButton('Close')
-        close_button.setFixedHeight(25)
-        close_button.setStyleSheet(f"background: {gradient}; color: #c8c8c8; border: 1px solid #1f1f1f; \
-                                     border-radius: 5px; padding: 1px;")
-        close_button.clicked.connect(self.close)
+        run_button.setFixedHeight(25)
+        run_button.setStyleSheet(f"background: {gradient}; color: #c8c8c8; border: 1px solid #1f1f1f; \
+                                     border-radius: 5px; padding: 1px; ")
+
+        icon = QtGui.QIcon(icon_path + 'runthecode.png')
+        run_button.setIcon(icon)
+        run_button.setIconSize(icon.actualSize(QtCore.QSize(15, 15)))
+        run_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+
+        run_button.clicked.connect(self.run_script)
 
         # Create layout
         layout = QtWidgets.QVBoxLayout()
@@ -75,19 +81,16 @@ class ChatGPT(QtWidgets.QWidget):
         layout.addWidget(self.message_input, 20)
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addWidget(send_button)
+        button_layout.addWidget(run_button)
         button_layout.addWidget(clear_button)
-        button_layout.addWidget(close_button)
         layout.addLayout(button_layout)
 
         # Set layout
         self.setLayout(layout)
 
-
     # Send a message to ChatGPT and update the UI with the response
     def send_message(self):
         message = self.message_input.toPlainText()
-
-
 
         prompt = ""
 
@@ -115,7 +118,6 @@ class ChatGPT(QtWidgets.QWidget):
         image_format2.setHeight(16)
         cursor.insertImage(image_format2)
 
-
         cursor.insertText(' ')
         cursor.insertHtml('ChatGPT: ')
         cursor.insertText('\n')
@@ -125,19 +127,16 @@ class ChatGPT(QtWidgets.QWidget):
 
         self.message_input.clear()
 
-
     # Clear previous messages and responses
     def clear_messages(self):
-
         self.conversation = [{"role": "system",
-                         "content": "helpful assistant. Will help Nuke(Foundry) related question, python, tcl, Nuke expression, BlinkScript."}]
+                              "content": "helpful assistant. Will help Nuke(Foundry) related question, python, tcl, Nuke expression, BlinkScript."}]
         self.response_output.clear()
+        self.code_blocks = ''
 
     # Send a message to ChatGPT and return the response
 
     def get_chat_response(self, message):
-        #print(self.conversation)
-        #print(f"Received message: {message}")
 
         self.conversation.append({"role": "user", "content": message})
 
@@ -153,17 +152,34 @@ class ChatGPT(QtWidgets.QWidget):
         if message.lower() in custom_prompts:
             return custom_prompts[message]
         else:
-        # Use OpenAI API to get response for other prompts
+            # Use OpenAI API to get response for other prompts
             try:
                 response = openai.ChatCompletion.create(
-                    model = "gpt-3.5-turbo",
-                    messages = self.conversation,
-                    temperature = 0,
-                    max_tokens = 2048,
-                    top_p = 1
+                    model="gpt-3.5-turbo",
+                    messages=self.conversation,
+                    temperature=0,
+                    max_tokens=2048,
+                    top_p=1
                 )
                 self.conversation.append({"role": "assistant", "content": response['choices'][0]['message']['content']})
-                return response['choices'][0]['message']['content']
+
+                response_text = response['choices'][0]['message']['content']
+
+                # Define a regular expression pattern to match the code blocks
+                pattern = r"```(?:\w+\n)?([\s\S]+?)```"
+
+
+                # Find all occurrences of the pattern in the text
+                matches = re.findall(pattern, response_text)
+                if matches:
+                    # Join all the extracted code blocks into a single string
+                    self.code_blocks = "\n".join(matches)
+                    #print(self.code_blocks)
+
+                else:
+                    print("No code blocks found.")
+
+                return response_text
 
             except Exception as e:
                 # display error message box pop-up
@@ -177,8 +193,26 @@ class ChatGPT(QtWidgets.QWidget):
                 msg_box.exec_()
                 return "Please click the clear button"
 
+    def run_script(self):
 
 
+        try:
+
+            script = self.code_blocks
+            print(script)
+            exec(script)
+
+
+
+        except Exception as e:
+            # capture the error message as a string
+            error_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+
+            # remove the second line from the error message
+            error_str = error_str.split('\n', 2)[0] + '\n' + error_str.split('\n', 2)[2]
+
+            # print the modified error message
+            print(error_str)
 
 
 
